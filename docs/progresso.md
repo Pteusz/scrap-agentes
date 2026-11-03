@@ -7,7 +7,7 @@ Atualize ao fim de cada etapa, colando a saída dos comandos como evidência.
 | 01 | Reconhecimento da VPS e esqueleto de deploy | concluída (2026-11-03) | ver "Evidências da etapa 01" |
 | 02 | Base e contrato do adaptador | concluída (2026-11-03) | ver "Evidências da etapa 02" |
 | 03 | Adaptador Instagram | concluída (2026-11-03) | ver "Evidências da etapa 03" |
-| 04 | Transcrição | pendente | |
+| 04 | Transcrição | implementada e medida; aguardando aprovação do Mateus (limite de erro e modelo) | ver "Evidências da etapa 04" |
 | 05 | Frames e marcadores | pendente | |
 | 06 | Pacote e busca | pendente | |
 | 07 | Fila e worker | pendente | |
@@ -133,6 +133,36 @@ Decisões e observações:
 - Risco: o `doc_id` do Instagram muda de tempos em tempos; sintoma é `indisponivel` em tudo; saída é atualizar o Instaloader.
 - Conferência dos números pelo Mateus: tudo bate. Túnel `autossh` validado. Sem revisão por subagente nesta etapa (não solicitada). Push aguarda confirmação do Mateus.
 
+## Evidências da etapa 04
+Módulo `scrapagentes/transcricao.py`: ffmpeg -> WAV 16 kHz mono; faster-whisper 1.2.1 em CPU, int8, VAD ligado, idioma `pt` fixo, temperatura 0; trechos normalizados (ordem, sem sobreposição, sem passar da duração); trava de um trabalho por vez (thread + `flock` entre processos). Comando: `python -m scrapagentes.transcricao <arquivo> [--modelo small] [--referencia texto.txt]`.
+
+Testes (VPS):
+```
+$ .venv/bin/python -m pytest
+71 passed
+$ SCRAPAGENTES_TESTES_REAIS=1 .venv/bin/python -m pytest tests_reais/test_transcricao_real.py -m real
+fala em português (WER < 30%, trechos ordenados), determinismo (duas execuções idênticas): passed
+vídeo sem fala -> lista vazia, sem erro: passed
+```
+A trava foi testada com 4 threads (no máximo 1 ativa) e entre dois processos (o segundo esperou o primeiro soltar).
+
+Medição na VPS (4 vCPUs, `fala_pt.mp4`, 67,9 s, referência feita à mão; cache de modelo quente):
+| modelo | WER | tempo | tempo / duração | pico de RAM |
+|---|---|---|---|---|
+| `base` | 11,8% | 39,6 s | 0,58x | 397 MB |
+| `small` | **6,4%** | 122,5 s | 1,80x | 732 MB |
+
+O tempo do `small` variou entre execuções (88,6 s e 122,5 s) porque a VPS é compartilhada. O WER ignora maiúsculas e pontuação; acentos e algarismos contam como erro (por exemplo "20" contra "vinte").
+Erros típicos: `base` troca "planeja" por "planejo", "a ponta só para" por "aponta só pro", "atacar a sistema"; `small` escreve "corrigido" por "corrigir" e "a cada sistema" por "atacar sistema".
+
+**Recomendação: `small`** (metade do erro do `base`, 1,8x o tempo real, 732 MB de RAM, cabe no limite de um job por vez). `base` é a saída se o tempo pesar mais que a precisão.
+
+Decisões e observações:
+- O `faster-whisper` 1.2.1 não funciona com o PyAV 19 (erro `metadata_errors`). Contorno: o áudio já extraído com o ffmpeg é lido do WAV e passado como array ao modelo, sem usar o decodificador do `faster-whisper`.
+- `tests/fixtures/` está no `.gitignore`: `fala_pt.mp4` e `fala_pt.txt` não são versionados; os testes reais os pulam se não existirem. Se quiser versioná-los, é só mudar o `.gitignore`.
+- Modelos baixados ficam no cache do usuário `pteuz` (`~/.cache/huggingface`), fora do repositório.
+- Pendente: aprovação do Mateus (limite de erro e modelo) e revisão por subagente.
+
 ## Insumos que dependem do Mateus
 | insumo | etapa | estado |
 |---|---|---|
@@ -144,8 +174,8 @@ Decisões e observações:
 | Decisão sobre proxy residencial | 03 | resolvido: não é necessário agora; túnel do celular pronto como reserva (`docs/tunel-celular.md`) |
 | Trocar o túnel manual do Termux por `autossh` e desligar a otimização de bateria do Termux | 03 | feito (`~/bin/tunel.sh`; teste pelo túnel devolveu o IP do celular e o adaptador resolveu o carrossel) |
 | Conferir os números do relatório do adaptador contra o Instagram | 03 | feito (Mateus confirmou que batem) |
-| Trecho de vídeo em português de 30 a 60 s e a transcrição correta feita à mão | 04 | pendente |
-| Limite aceito de erro de transcrição | 04 | pendente |
+| Trecho de vídeo em português de 30 a 60 s e a transcrição correta feita à mão | 04 | recebido (reel `DfQdA_OS8m2`, 67,9 s; ligeiramente acima de 60 s) |
+| Limite aceito de erro de transcrição (WER) e aprovação do modelo | 04 | **pendente** |
 | Chave de API de produção definida por ele | 09 | pendente |
 
 ## URLs de teste do Instagram (etapa 03)

@@ -48,11 +48,14 @@ SCRAPAGENTES_DADOS=/tmp/sa-dev SCRAPAGENTES_CHAVE_API=<chave de desenvolvimento>
 # inspecionar uma URL do Instagram (baixa, mostra o relatório e apaga a mídia); --dados mostra só os dados lidos
 .venv/bin/python -m scrapagentes.adaptadores.instagram <url>
 
+# transcrever um arquivo (--referencia calcula o WER)
+.venv/bin/python -m scrapagentes.transcricao <arquivo> --modelo small
+
 # testes reais contra o Instagram (rede de verdade; fora do pytest padrão)
 SCRAPAGENTES_TESTES_REAIS=1 .venv/bin/python -m pytest tests_reais -m real -p no:cacheprovider
 ```
 
-Variáveis de ambiente: `SCRAPAGENTES_DADOS` (pasta do banco e da mídia, padrão `dados`), `SCRAPAGENTES_CHAVE_API` (sem ela toda rota exceto `/saude` responde 401), `SCRAPAGENTES_DOCS=1` (liga `/docs`; fica desligado por padrão), `SCRAPAGENTES_FFMPEG` (caminho do ffmpeg, opcional), `SCRAPAGENTES_PROXY` (só o adaptador Instagram lê; ex. `socks5h://127.0.0.1:1080`, pode ter credenciais, nunca em log), `SCRAPAGENTES_IG_INTERVALO_S` (intervalo mínimo entre consultas ao Instagram, padrão 5).
+Variáveis de ambiente: `SCRAPAGENTES_DADOS` (pasta do banco e da mídia, padrão `dados`), `SCRAPAGENTES_CHAVE_API` (sem ela toda rota exceto `/saude` responde 401), `SCRAPAGENTES_DOCS=1` (liga `/docs`; fica desligado por padrão), `SCRAPAGENTES_FFMPEG` (caminho do ffmpeg, opcional), `SCRAPAGENTES_PROXY` (só o adaptador Instagram lê; ex. `socks5h://127.0.0.1:1080`, pode ter credenciais, nunca em log), `SCRAPAGENTES_IG_INTERVALO_S` (intervalo mínimo entre consultas ao Instagram, padrão 5), `SCRAPAGENTES_WHISPER_MODELO` (padrão `small`), `SCRAPAGENTES_IDIOMA` (padrão `pt`).
 
 Ainda não existem: worker (etapa 07) e testes reais contra as demais redes (etapa 10).
 
