@@ -11,7 +11,7 @@ Atualize ao fim de cada etapa, colando a saída dos comandos como evidência.
 | 05 | Frames e marcadores | concluída | folhas de contato aprovadas pelo Mateus |
 | 06 | Pacote e busca | concluída | formato do pacote aprovado pelo Mateus |
 | 07 | Fila e worker | concluída (2026-11-03) | ver "Evidências da etapa 07" |
-| 08 | Métrica sob demanda | pendente | |
+| 08 | Métrica sob demanda | concluída (2026-11-03) | ver "Evidências da etapa 08" |
 | 09 | Publicação e endurecimento | pendente | |
 | 10 | Molde para novas redes | pendente | |
 
@@ -229,6 +229,28 @@ Nenhum item, imagem ou subnicho duplicado; a única linha nova é a coleta (mét
 Recursos na VPS (`vmstat -n 2` da máquina inteira, que também roda outros serviços), durante o job de vídeo com `small`: CPU ocupada no pico 76% (usuário ~56-66%, cerca de 2,5 dos 4 vCPU), contra ~32% de base; memória livre entre 3,5 e 4,4 GB (base ~3,75 GB; queda de 0,25 a 0,5 GB), sem uso de swap; load average 2,93 no fim. Foto e carrossel são desprezíveis (menos de 6 s). Pico de RSS por processo não foi capturado.
 
 Pendente do Mateus: conferir os três pacotes (vídeo, foto, carrossel) e decidir sobre `item_id: null`. A unidade systemd `scrapagentes-worker` (--user) não foi criada: mexer na VPS exige a confirmação dele. Revisão por subagente não feita (não solicitada).
+
+## Evidências da etapa 08
+A rota `POST /itens/{id}/coletas`, o tipo de job `coleta` e a gravação de um `coletado_em` por coleta já existiam desde as etapas 02 e 07. Nesta etapa entraram os testes que faltavam (`tests/test_coleta.py`, 7 novos) e a validação real. Nenhum código de produção mudou.
+
+Testes (VPS):
+```
+$ .venv/bin/python -m pytest
+109 passed   (7 novos em tests/test_coleta.py)
+```
+Cobertos: rodar o worker sem job pendente não coleta nada; todas as linhas de uma coleta compartilham o mesmo `coletado_em` (3 coletas = 3 datas, 2 linhas cada); falha do adaptador (`bloqueado` e `nao_encontrado`) deixa o job em `erro` com código e mensagem e as coletas anteriores e o pacote intactos; item de rede sem adaptador devolve 422 com mensagem clara e não cria job; adaptador removido depois de enfileirar vira job `erro`; varredura do código de produção sem agendador, cron, `Timer`, `asyncio.sleep`, `add_job` e afins, e `enfileirar_coleta` só referenciada em `api.py` e `servico.py`. As duas coletas seguidas, a métrica mais recente no pacote e na busca e a coleta sem métrica já eram cobertas em `test_api.py`, `test_pacote_video.py` e `test_fila.py`.
+
+Validação real (foto `DfSJbEzDXf5`, API na porta 8201 e worker `--uma-vez`, dados em `/tmp/sa-c8`, removidos depois). Ingestão e duas chamadas de `POST /itens/1/coletas`, todos os jobs `concluido`, tentativas 1:
+```
+coletado_em                         comentarios   curtidas
+2026-11-03T21:05:29.146738+00:00    9910          1166725     (ingestão)
+2026-11-03T21:05:36.622944+00:00    9910          1166862     (coleta 1)
+2026-11-03T21:05:48.099835+00:00    9911          1167102     (coleta 2)
+pacote: coletado_em 2026-11-03T21:05:48.099835+00:00, curtidas 1167102, comentarios 9911
+```
+Três conjuntos preservados, com datas distintas e valores que de fato mudaram; o pacote usa o mais recente.
+
+Recoleta automática: não existe. O teste de varredura acima passa e o worker só consome jobs criados pela rota ou pela ingestão. Revisão por subagente não feita (não solicitada), como nas etapas anteriores.
 
 ## Insumos que dependem do Mateus
 | insumo | etapa | estado |
