@@ -7,7 +7,7 @@ Atualize ao fim de cada etapa, colando a saída dos comandos como evidência.
 | 01 | Reconhecimento da VPS e esqueleto de deploy | concluída (2026-11-03) | ver "Evidências da etapa 01" |
 | 02 | Base e contrato do adaptador | concluída (2026-11-03) | ver "Evidências da etapa 02" |
 | 03 | Adaptador Instagram | concluída (2026-11-03) | ver "Evidências da etapa 03" |
-| 04 | Transcrição | implementada e medida; aguardando aprovação do Mateus (limite de erro e modelo) | ver "Evidências da etapa 04" |
+| 04 | Transcrição | concluída (2026-11-03) | ver "Evidências da etapa 04" |
 | 05 | Frames e marcadores | pendente | |
 | 06 | Pacote e busca | pendente | |
 | 07 | Fila e worker | pendente | |
@@ -161,7 +161,7 @@ Decisões e observações:
 - O `faster-whisper` 1.2.1 não funciona com o PyAV 19 (erro `metadata_errors`). Contorno: o áudio já extraído com o ffmpeg é lido do WAV e passado como array ao modelo, sem usar o decodificador do `faster-whisper`.
 - `tests/fixtures/` está no `.gitignore`: `fala_pt.mp4` e `fala_pt.txt` não são versionados; os testes reais os pulam se não existirem. Se quiser versioná-los, é só mudar o `.gitignore`.
 - Modelos baixados ficam no cache do usuário `pteuz` (`~/.cache/huggingface`), fora do repositório.
-- Pendente: aprovação do Mateus (limite de erro e modelo) e revisão por subagente.
+- Aprovado pelo Mateus: modelo `small`, limite de WER de 10% (medido 6,4% na fixture). Sem revisão por subagente nesta etapa (não solicitada).
 
 ## Insumos que dependem do Mateus
 | insumo | etapa | estado |
@@ -175,7 +175,7 @@ Decisões e observações:
 | Trocar o túnel manual do Termux por `autossh` e desligar a otimização de bateria do Termux | 03 | feito (`~/bin/tunel.sh`; teste pelo túnel devolveu o IP do celular e o adaptador resolveu o carrossel) |
 | Conferir os números do relatório do adaptador contra o Instagram | 03 | feito (Mateus confirmou que batem) |
 | Trecho de vídeo em português de 30 a 60 s e a transcrição correta feita à mão | 04 | recebido (reel `DfQdA_OS8m2`, 67,9 s; ligeiramente acima de 60 s) |
-| Limite aceito de erro de transcrição (WER) e aprovação do modelo | 04 | **pendente** |
+| Limite aceito de erro de transcrição (WER) e aprovação do modelo | 04 | feito: modelo `small`, WER até 10% (medido: 6,4%) |
 | Chave de API de produção definida por ele | 09 | pendente |
 
 ## URLs de teste do Instagram (etapa 03)
