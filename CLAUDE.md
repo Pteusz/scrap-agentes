@@ -40,6 +40,10 @@ Rodar a partir da raiz do projeto (na VPS: `~/scrapagentes`, venv em `.venv`).
 SCRAPAGENTES_DADOS=/tmp/sa-dev SCRAPAGENTES_CHAVE_API=<chave de desenvolvimento> SCRAPAGENTES_DOCS=1 \
   .venv/bin/uvicorn --factory scrapagentes.api:criar_app_do_ambiente --host 127.0.0.1 --port 8200
 
+# worker (processo separado da API, mesmas variáveis de ambiente; consome a tabela `job`, um job por vez).
+# A API só enfileira: sem o worker rodando, os jobs ficam `pendente`. --uma-vez esvazia a fila e sai.
+SCRAPAGENTES_DADOS=/tmp/sa-dev .venv/bin/python -m scrapagentes.trabalhador [--uma-vez]
+
 # gerar as fixtures de mídia à mão
 .venv/bin/python -m scrapagentes.fixtures /tmp/fixtures
 ```
@@ -63,7 +67,7 @@ SCRAPAGENTES_TESTES_REAIS=1 .venv/bin/python -m pytest tests_reais -m real -p no
 
 Variáveis de ambiente: `SCRAPAGENTES_DADOS` (pasta do banco e da mídia, padrão `dados`), `SCRAPAGENTES_CHAVE_API` (sem ela toda rota exceto `/saude` responde 401), `SCRAPAGENTES_DOCS=1` (liga `/docs`; fica desligado por padrão), `SCRAPAGENTES_FFMPEG` (caminho do ffmpeg, opcional), `SCRAPAGENTES_PROXY` (só o adaptador Instagram lê; ex. `socks5h://127.0.0.1:1080`, pode ter credenciais, nunca em log), `SCRAPAGENTES_IG_INTERVALO_S` (intervalo mínimo entre consultas ao Instagram, padrão 5), `SCRAPAGENTES_WHISPER_MODELO` (padrão `small`), `SCRAPAGENTES_IDIOMA` (padrão `pt`), `SCRAPAGENTES_FRAMES_<NOME>` (parâmetros da seleção de frames, ver `docs/decisoes.md`).
 
-Ainda não existem: worker (etapa 07) e testes reais contra as demais redes (etapa 10).
+Ainda não existem: testes reais contra as demais redes (etapa 10).
 
 ## Mapa
 - `docs/SPEC.md` — modelo de dados, contrato do adaptador, API, regras. É o contrato do projeto.

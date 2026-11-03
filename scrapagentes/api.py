@@ -90,7 +90,7 @@ def criar_app(config: Config) -> FastAPI:
                 "duracao_s": corpo.get("duracao_s"), "metricas": metricas, "arquivos": arquivos,
             }
             return await run_in_threadpool(
-                servico.ingerir, conn, config,
+                servico.enfileirar_ingestao, conn, config,
                 rede=corpo.get("rede"), url=corpo.get("url"), nicho=corpo.get("nicho"),
                 subnichos=corpo.get("subnichos"), entrada=entrada, reprocessar=reprocessar,
             )
@@ -151,7 +151,7 @@ def criar_app(config: Config) -> FastAPI:
             corpo = await request.json()
             if not isinstance(corpo, dict):
                 raise servico.ErroDeUso("o corpo JSON deve ser um objeto")
-        return await run_in_threadpool(servico.coletar, conn, item_id, corpo)
+        return await run_in_threadpool(servico.enfileirar_coleta, conn, item_id, corpo)
 
     return app
 

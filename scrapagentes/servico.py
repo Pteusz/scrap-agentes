@@ -1,14 +1,14 @@
-"""Regras do núcleo, agnósticas de rede: ingestão, coleta, busca e pacote.
+"""Regras do núcleo, agnósticas de rede: fila, ingestão, coleta, busca e pacote.
 
-Nesta etapa a ingestão é síncrona (o worker entra na etapa 07). Cada chamada cria um job e o
-deixa em `concluido` ou `erro`. Vídeo passa por transcrição e seleção de frames antes de gravar.
+A API só enfileira (`enfileirar_*`); o worker (`trabalhador.py`) reivindica e executa os jobs.
+Vídeo passa por transcrição e seleção de frames antes de gravar.
 """
 import json
 import logging
 import re
 import shutil
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import tempfile
@@ -83,24 +83,24 @@ def _metricas_recentes(conn: sqlite3.Connection, item_id: int) -> dict | None:
 
 # ---------- jobs ----------
 
+MAX_TENTATIVAS = 3  # a primeira execução mais no máximo 2 retentativas
+# Erros que repetir não resolve: o job vai direto para `erro`.
+CODIGOS_DEFINITIVOS = {"nao_encontrado", "formato_nao_suportado", "exige_login", "entrada_invalida"}
+
+
+class Queda(BaseException):
+    """Simula a morte do processo no meio de um job (só testes). Não é capturada pelo worker."""
+
+
 def _criar_job(conn, tipo: str, item_id: int | None, parametros: dict) -> int:
     agora = agora_iso()
     with conn:
         cur = conn.execute(
             "INSERT INTO job (item_id, tipo, estado, tentativas, parametros, criado_em, atualizado_em) "
-            "VALUES (?, ?, 'executando', 1, ?, ?, ?)",
+            "VALUES (?, ?, 'pendente', 0, ?, ?, ?)",
             (item_id, tipo, json.dumps(parametros, ensure_ascii=False), agora, agora),
         )
     return cur.lastrowid
-
-
-def _fechar_job(conn, job_id: int, erro: str | None, item_id: int | None = None) -> None:
-    with conn:
-        conn.execute(
-            "UPDATE job SET estado = ?, erro = ?, item_id = COALESCE(?, item_id), atualizado_em = ? "
-            "WHERE id = ?",
-            ("erro" if erro else "concluido", erro, item_id, agora_iso(), job_id),
-        )
 
 
 def obter_job(conn, job_id: int) -> dict:
@@ -110,6 +110,97 @@ def obter_job(conn, job_id: int) -> dict:
     d = dict(j)
     d["parametros"] = json.loads(d["parametros"]) if d["parametros"] else None
     return d
+
+
+def reivindicar_job(conn) -> dict | None:
+    """Pega o job pendente mais antigo e o marca `executando`. Atômico entre processos."""
+    with conn:
+        linha = conn.execute(
+            "UPDATE job SET estado = 'executando', tentativas = tentativas + 1, atualizado_em = ? "
+            "WHERE id = (SELECT id FROM job WHERE estado = 'pendente' ORDER BY atualizado_em, id LIMIT 1) "
+            "RETURNING id",
+            (agora_iso(),),
+        ).fetchone()
+    return obter_job(conn, linha["id"]) if linha else None
+
+
+def _pasta_entrada(config: Config, job_id: int) -> Path:
+    return config.dados / "entrada" / str(job_id)
+
+
+def _limpar_entrada(config: Config, job_id: int) -> None:
+    shutil.rmtree(_pasta_entrada(config, job_id), ignore_errors=True)
+
+
+def _registrar_falha(conn, config: Config, job: dict, codigo: str, mensagem: str) -> None:
+    """Falha transitória volta a `pendente` (no fim da fila) até esgotar as tentativas."""
+    tentativas = job["tentativas"]
+    linha = f"tentativa {tentativas}/{MAX_TENTATIVAS}: {codigo}: {mensagem}"
+    definitivo = codigo in CODIGOS_DEFINITIVOS or tentativas >= MAX_TENTATIVAS
+    if definitivo and tentativas == 1:
+        texto = f"{codigo}: {mensagem}"
+    else:
+        texto = "\n".join(filter(None, [job.get("erro"), linha]))
+    with conn:
+        conn.execute(
+            "UPDATE job SET estado = ?, erro = ?, atualizado_em = ? WHERE id = ?",
+            ("erro" if definitivo else "pendente", texto, agora_iso(), job["id"]),
+        )
+    if definitivo:
+        _limpar_entrada(config, job["id"])
+
+
+def recuperar(conn, config: Config) -> dict:
+    """Ao subir o worker: jobs que ficaram `executando` voltam a `pendente`; limpa sobras.
+
+    Sem duplicar nada: o item, as imagens, as métricas e o fechamento do job são gravados numa só
+    transação, então um job interrompido ou foi gravado por inteiro ou não gravou nada.
+    """
+    voltaram = esgotados = 0
+    for j in conn.execute("SELECT id, tentativas, erro FROM job WHERE estado = 'executando'").fetchall():
+        nota = f"tentativa {j['tentativas']}/{MAX_TENTATIVAS}: processo interrompido"
+        texto = "\n".join(filter(None, [j["erro"], nota]))
+        esgotou = j["tentativas"] >= MAX_TENTATIVAS
+        with conn:
+            conn.execute(
+                "UPDATE job SET estado = ?, erro = ?, atualizado_em = ? WHERE id = ?",
+                ("erro" if esgotou else "pendente", texto, agora_iso(), j["id"]),
+            )
+        if esgotou:
+            _limpar_entrada(config, j["id"])
+            esgotados += 1
+        else:
+            voltaram += 1
+    for pasta in config.dados.glob("processamento-*"):
+        shutil.rmtree(pasta, ignore_errors=True)
+    _varrer_midia_nova(conn, config)
+    return {"voltaram": voltaram, "esgotados": esgotados}
+
+
+def _varrer_midia_nova(conn, config: Config) -> None:
+    """`midia/<id>.novo` sobrou de uma queda. Se o commit do item aconteceu (job fechado depois da
+    pasta ser escrita), conclui a troca; senão, descarta."""
+    if not config.midia.is_dir():
+        return
+    for pasta in config.midia.glob("*.novo"):
+        try:
+            item_id = int(pasta.name.removesuffix(".novo"))
+        except ValueError:
+            continue
+        gravado_em = datetime.fromtimestamp(pasta.stat().st_mtime, tz=timezone.utc).isoformat(timespec="microseconds")
+        commit = conn.execute(
+            "SELECT 1 FROM job WHERE item_id = ? AND tipo = 'ingestao' AND estado = 'concluido' "
+            "AND atualizado_em >= ?", (item_id, gravado_em),
+        ).fetchone()
+        if commit:
+            _trocar_midia(pasta, config.midia / str(item_id))
+        else:
+            shutil.rmtree(pasta, ignore_errors=True)
+
+
+def _trocar_midia(nova: Path, final: Path) -> None:
+    shutil.rmtree(final, ignore_errors=True)
+    nova.rename(final)
 
 
 # ---------- ingestão ----------
@@ -179,7 +270,7 @@ def _trocar_subnichos(conn, item_id: int, tags: list[str]) -> None:
     )
 
 
-def ingerir(
+def enfileirar_ingestao(
     conn: sqlite3.Connection,
     config: Config,
     *,
@@ -190,8 +281,12 @@ def ingerir(
     entrada: dict | None = None,
     reprocessar: bool = False,
 ) -> dict:
-    """Cria o job, resolve pelo adaptador e grava o item. Devolve {job_id, item_id}."""
-    entrada = entrada or {}
+    """Valida a request e cria o job `pendente`. Devolve {job_id, item_id}.
+
+    `item_id` é o do item já existente para a mesma rede+url; num item novo é `None` até o worker
+    criá-lo (consulte `GET /jobs/{id}`).
+    """
+    entrada = dict(entrada or {})
     for nome, valor in (("rede", rede), ("url", url), ("nicho", nicho)):
         if valor is not None and not isinstance(valor, str):
             raise ErroDeUso(f"`{nome}` deve ser texto")
@@ -214,18 +309,91 @@ def ingerir(
     if existente is None and not nicho_norm:
         raise ErroDeUso("`nicho` é obrigatório ao criar um item")
 
-    job_id = _criar_job(conn, "ingestao", existente["id"] if existente else None, {
+    arquivos = [Path(a) for a in entrada.pop("arquivos", None) or []]
+    entrada["arquivos"] = []
+    parametros = {
         "rede": adaptador.nome, "url": url_canonica, "nicho": nicho_norm,
-        "subnichos": tags, "reprocessar": reprocessar,
-    })
+        "subnichos": tags, "reprocessar": reprocessar, "entrada": entrada,
+    }
+    job_id = _criar_job(conn, "ingestao", existente["id"] if existente else None, parametros)
+    if arquivos:  # o upload mora em dados/entrada/<job> até o job terminar
+        try:
+            pasta = _pasta_entrada(config, job_id)
+            pasta.mkdir(parents=True)
+            for a in arquivos:
+                shutil.copyfile(a, pasta / a.name)
+            entrada["arquivos"] = [a.name for a in arquivos]
+            with conn:
+                conn.execute(
+                    "UPDATE job SET parametros = ? WHERE id = ?",
+                    (json.dumps(parametros, ensure_ascii=False), job_id),
+                )
+        except Exception:
+            _limpar_entrada(config, job_id)
+            with conn:
+                conn.execute("DELETE FROM job WHERE id = ?", (job_id,))
+            raise
+    return {"job_id": job_id, "item_id": existente["id"] if existente else None}
+
+
+def enfileirar_coleta(conn: sqlite3.Connection, item_id: int, entrada: dict | None = None) -> dict:
+    """Coleta de métricas sob demanda: cria o job `pendente`."""
+    item = conn.execute("SELECT rede FROM item WHERE id = ?", (item_id,)).fetchone()
+    if item is None:
+        raise ItemNaoEncontrado(f"item {item_id} não existe")
+    adaptador = adaptadores.obter(item["rede"])
+    if adaptador is None:
+        raise ErroDeUso(f"adaptador da rede {item['rede']} não está registrado")
+    entrada = entrada or {}
+    _validar_metricas(adaptador, entrada.get("metricas"))
+    job_id = _criar_job(conn, "coleta", item_id, {"item_id": item_id, "entrada": entrada})
+    return {"job_id": job_id, "item_id": item_id}
+
+
+def executar_job(conn: sqlite3.Connection, config: Config, job: dict) -> None:
+    """Executa um job já reivindicado. Falhas viram retentativa ou `erro`; nunca propaga Exception."""
+    try:
+        if job["tipo"] == "ingestao":
+            _executar_ingestao(conn, config, job)
+        else:
+            _executar_coleta(conn, job)
+    except ErroAdaptador as exc:
+        _registrar_falha(conn, config, job, exc.codigo, str(exc))
+    except (ErroDeUso, ValueError) as exc:
+        _registrar_falha(conn, config, job, "entrada_invalida", str(exc))
+    except Exception as exc:
+        log.exception("falha inesperada no job %s", job["id"])
+        _registrar_falha(conn, config, job, "erro_interno", type(exc).__name__)
+    else:
+        if job["tipo"] == "ingestao":
+            _limpar_entrada(config, job["id"])
+
+
+def _executar_ingestao(conn, config: Config, job: dict) -> None:
+    p = job["parametros"]
+    entrada = dict(p["entrada"])
+    entrada["arquivos"] = [_pasta_entrada(config, job["id"]) / n for n in entrada.get("arquivos", [])]
+    adaptador = adaptadores.obter(p["rede"])
+    if adaptador is None:
+        raise ErroDeUso(f"adaptador da rede {p['rede']} não está registrado")
+    url, tags, nicho, reprocessar = p["url"], p["subnichos"], p["nicho"], p["reprocessar"]
+    existente = conn.execute(
+        "SELECT id FROM item WHERE rede = ? AND url = ?", (adaptador.nome, url)
+    ).fetchone()
+    if existente is None and not nicho:
+        raise ErroDeUso("`nicho` é obrigatório ao criar um item")
+
     midia_nova = None
     resolvido = None
     pasta_proc = None
     try:
-        resolvido = adaptador.resolver(url_canonica, entrada)
+        resolvido = adaptador.resolver(url, entrada)
         metricas = _validar_metricas(adaptador, resolvido.metricas)
         processado = None
-        if resolvido.formato == "video" and (existente is None or reprocessar):
+        # Item que perdeu a mídia (queda no meio da troca) também é refeito.
+        sem_midia = existente is not None and not (config.midia / str(existente["id"])).is_dir()
+        refazer = existente is None or reprocessar or sem_midia
+        if resolvido.formato == "video" and refazer:
             config.dados.mkdir(parents=True, exist_ok=True)
             pasta_proc = Path(tempfile.mkdtemp(prefix="processamento-", dir=config.dados))
             processado = _processar_video(config, resolvido.arquivos[0], resolvido.duracao_s, pasta_proc)
@@ -236,75 +404,71 @@ def ingerir(
                 cur = conn.execute(
                     "INSERT INTO item (rede, url, conta, nicho, formato, data_publicacao, legenda, "
                     "duracao_s, criado_em, atualizado_em) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (adaptador.nome, url_canonica, resolvido.conta, nicho_norm, resolvido.formato,
+                    (adaptador.nome, url, resolvido.conta, nicho, resolvido.formato,
                      resolvido.data_publicacao, resolvido.legenda, resolvido.duracao_s, agora, agora),
                 )
                 item_id = cur.lastrowid
-                midia_nova = _gravar_midia(conn, config, item_id, resolvido.formato, resolvido.arquivos, processado)
             else:
                 item_id = existente["id"]
                 conn.execute(
                     "UPDATE item SET legenda = COALESCE(?, legenda), nicho = COALESCE(?, nicho), atualizado_em = ? "
                     "WHERE id = ?",
-                    (resolvido.legenda or None, nicho_norm, agora, item_id),
+                    (resolvido.legenda or None, nicho, agora, item_id),
                 )
-                if reprocessar:
-                    midia_nova = _gravar_midia(conn, config, item_id, resolvido.formato, resolvido.arquivos, processado)
+            if refazer:
+                midia_nova = _gravar_midia(conn, config, item_id, resolvido.formato, resolvido.arquivos, processado)
             if tags is not None:
                 _trocar_subnichos(conn, item_id, tags)
             if metricas:
                 _gravar_coleta(conn, item_id, metricas)
             reindexar_busca(conn, item_id)
+            conn.execute(  # o job fecha na mesma transação que grava o item
+                "UPDATE job SET estado = 'concluido', item_id = ?, atualizado_em = ? WHERE id = ?",
+                (item_id, agora_iso(), job["id"]),
+            )
         if midia_nova is not None:  # só troca a mídia depois do commit
-            final = config.dados / "midia" / str(item_id)
-            shutil.rmtree(final, ignore_errors=True)
-            midia_nova.rename(final)
-        _fechar_job(conn, job_id, None, item_id)
-        return {"job_id": job_id, "item_id": item_id}
-    except ErroAdaptador as exc:
-        _fechar_job(conn, job_id, f"{exc.codigo}: {exc}")
-    except (ErroDeUso, ValueError) as exc:
-        _fechar_job(conn, job_id, f"entrada_invalida: {exc}")
-    except Exception as exc:
-        log.exception("falha inesperada na ingestão (job %s)", job_id)
-        _fechar_job(conn, job_id, f"erro_interno: {type(exc).__name__}")
+            nova, midia_nova = midia_nova, None
+            _trocar_midia(nova, config.dados / "midia" / str(item_id))
     finally:
         if resolvido is not None and resolvido.pasta_temporaria is not None:
             shutil.rmtree(resolvido.pasta_temporaria, ignore_errors=True)
         if pasta_proc is not None:
             shutil.rmtree(pasta_proc, ignore_errors=True)
-    if midia_nova is not None:
-        shutil.rmtree(midia_nova, ignore_errors=True)
-    return {"job_id": job_id, "item_id": existente["id"] if existente else None}
+        if midia_nova is not None:  # falha antes do commit
+            shutil.rmtree(midia_nova, ignore_errors=True)
 
 
-def coletar(conn: sqlite3.Connection, item_id: int, entrada: dict | None = None) -> dict:
-    """Coleta de métricas sob demanda: nunca sobrescreve, sempre acrescenta linhas."""
+def _executar_coleta(conn, job: dict) -> None:
+    item_id = job["parametros"]["item_id"]
+    entrada = job["parametros"].get("entrada") or {}
     item = conn.execute("SELECT * FROM item WHERE id = ?", (item_id,)).fetchone()
     if item is None:
-        raise ItemNaoEncontrado(f"item {item_id} não existe")
+        raise ErroDeUso(f"item {item_id} não existe")
     adaptador = adaptadores.obter(item["rede"])
     if adaptador is None:
         raise ErroDeUso(f"adaptador da rede {item['rede']} não está registrado")
-    _validar_metricas(adaptador, (entrada or {}).get("metricas"))
+    metricas = _validar_metricas(adaptador, adaptador.coletar_metricas(dict(item), entrada))
+    if not metricas:
+        raise ErroAdaptador("nenhuma métrica obtida")
+    conn.execute("BEGIN IMMEDIATE")  # trava de escrita antes de ler o MAX(coletado_em)
+    with conn:
+        _gravar_coleta(conn, item_id, metricas)
+        conn.execute(
+            "UPDATE job SET estado = 'concluido', item_id = ?, atualizado_em = ? WHERE id = ?",
+            (item_id, agora_iso(), job["id"]),
+        )
 
-    job_id = _criar_job(conn, "coleta", item_id, {"item_id": item_id})
-    try:
-        metricas = _validar_metricas(adaptador, adaptador.coletar_metricas(dict(item), entrada))
-        if not metricas:
-            raise ErroAdaptador("nenhuma métrica obtida")
-        conn.execute("BEGIN IMMEDIATE")  # trava de escrita antes de ler o MAX(coletado_em)
-        with conn:
-            _gravar_coleta(conn, item_id, metricas)
-        _fechar_job(conn, job_id, None, item_id)
-    except ErroAdaptador as exc:
-        _fechar_job(conn, job_id, f"{exc.codigo}: {exc}")
-    except (ErroDeUso, ValueError) as exc:
-        _fechar_job(conn, job_id, f"entrada_invalida: {exc}")
-    except Exception as exc:
-        log.exception("falha inesperada na coleta (job %s)", job_id)
-        _fechar_job(conn, job_id, f"erro_interno: {type(exc).__name__}")
-    return {"job_id": job_id, "item_id": item_id}
+
+def processar_fila(conn, config: Config, limite: int | None = None) -> int:
+    """Executa jobs pendentes em série até esvaziar a fila. Devolve quantos rodou."""
+    rodou = 0
+    while limite is None or rodou < limite:
+        job = reivindicar_job(conn)
+        if job is None:
+            break
+        executar_job(conn, config, job)
+        rodou += 1
+    return rodou
 
 
 # ---------- subnichos ----------

@@ -10,7 +10,7 @@ Atualize ao fim de cada etapa, colando a saída dos comandos como evidência.
 | 04 | Transcrição | concluída (2026-11-03) | ver "Evidências da etapa 04" |
 | 05 | Frames e marcadores | concluída | folhas de contato aprovadas pelo Mateus |
 | 06 | Pacote e busca | concluída | formato do pacote aprovado pelo Mateus |
-| 07 | Fila e worker | pendente | |
+| 07 | Fila e worker | concluída (2026-11-03) | ver "Evidências da etapa 07" |
 | 08 | Métrica sob demanda | pendente | |
 | 09 | Publicação e endurecimento | pendente | |
 | 10 | Molde para novas redes | pendente | |
@@ -197,6 +197,39 @@ Pacote real impresso com `python -m scrapagentes.mostrar_pacote tests/fixtures/f
 
 Aprovado pelo Mateus: formato do pacote do vídeo real. Revisão por subagente (prevista na entrega) não feita, como nas etapas 03 a 05; fica para quando ele pedir.
 
+## Evidências da etapa 07
+Implementado: `POST /itens` e `POST /itens/{id}/coletas` só validam e enfileiram (202); o worker `python -m scrapagentes.trabalhador` consome a tabela `job` (ver `docs/decisoes.md`, etapa 07). Observação: para item novo a resposta traz `item_id: null` até o worker criá-lo.
+
+Testes (VPS):
+```
+$ .venv/bin/python -m pytest
+102 passed   (13 novos em tests/test_fila.py; os demais testes passaram a drenar a fila)
+```
+`test_fila.py` cobre: ciclo API -> worker; falha forçada com 3 tentativas registradas enquanto os outros jobs seguem; retentativa que funciona; erro definitivo sem retentativa; queda antes do commit e depois do commit (antes da troca da mídia) sem duplicar; job que derruba o worker esgota as tentativas; limpeza de `processamento-*`; dois jobs de vídeo em sequência (trava); reingestão enfileirada duas vezes; reprocessar; item sem pasta de mídia; coleta pela fila.
+
+Ponta a ponta real na VPS (API na porta 8200 e worker em processos separados, dados em `/tmp/sa-e2e`, tudo removido depois). Três URLs enfileiradas com o worker parado (`pendente`, tentativas 0), depois worker ligado:
+```
+job 1 reel  /p/Dd4DyYzgCvf/ (canonizada)  concluido, tentativas 1, erro null  125,6 s de vídeo, 31 trechos, 16 frames (0,0..125,25 s; comeco 5 / meio 5 / fim 6)  curtidas 7809, comentarios 8556  ~189 s
+job 2 foto  /p/DfSJbEzDXf5/               concluido, tentativas 1  1 imagem  curtidas 1.151.678  0,8 s
+job 3 carrossel /p/Cyn3G8FLV1v/           concluido, tentativas 1  4 imagens  curtidas 4  5,1 s
+total 3 jobs: ~190 s (20:49:35 -> 20:52:51 UTC)
+itens 3 | imagens por item [(1,16),(2,1),(3,4)] | coletas por item [(1,1),(2,1),(3,1)]
+```
+Queda real (`kill -9` no worker, 45 s dentro do job de vídeo; o mesmo reel reenviado com `reprocessar=true`):
+```
+depois do kill -9:  job 4 estado=executando tentativas=1; sobra dados/processamento-*; banco igual ao de antes
+worker reiniciado:  "recuperação: 1 job(s) voltaram à fila, 0 esgotaram as tentativas"
+                    job 4 (ingestao) tentativa 2 -> concluido em 185,3 s
+job 4: concluido, tentativas 2, erro "tentativa 1/3: processo interrompido"
+depois:  itens 3 | imagens por item [(1,16),(2,1),(3,4)] | coletas por item [(1,2),(2,1),(3,1)] | subnichos 3
+         sem processamento-* e sem midia/*.novo
+```
+Nenhum item, imagem ou subnicho duplicado; a única linha nova é a coleta (métrica) da segunda ingestão, que é o comportamento previsto (métrica nunca sobrescreve).
+
+Recursos na VPS (`vmstat -n 2` da máquina inteira, que também roda outros serviços), durante o job de vídeo com `small`: CPU ocupada no pico 76% (usuário ~56-66%, cerca de 2,5 dos 4 vCPU), contra ~32% de base; memória livre entre 3,5 e 4,4 GB (base ~3,75 GB; queda de 0,25 a 0,5 GB), sem uso de swap; load average 2,93 no fim. Foto e carrossel são desprezíveis (menos de 6 s). Pico de RSS por processo não foi capturado.
+
+Pendente do Mateus: conferir os três pacotes (vídeo, foto, carrossel) e decidir sobre `item_id: null`. A unidade systemd `scrapagentes-worker` (--user) não foi criada: mexer na VPS exige a confirmação dele. Revisão por subagente não feita (não solicitada).
+
 ## Insumos que dependem do Mateus
 | insumo | etapa | estado |
 |---|---|---|
@@ -212,6 +245,8 @@ Aprovado pelo Mateus: formato do pacote do vídeo real. Revisão por subagente (
 | Limite aceito de erro de transcrição (WER) e aprovação do modelo | 04 | feito: modelo `small`, WER até 10% (medido: 6,4%) |
 | 2 vídeos reais de tipos diferentes (ex.: pessoa falando para a câmera e cortes rápidos) e aprovação da folha de contato | 05 | feito: reels `Dd4DyYzgCvf` e `DcrYj5FDSUC`; folhas aprovadas |
 | Aprovação do formato do pacote de um vídeo real | 06 | feito (pacote do `fala_pt.mp4`) |
+| Conferir os 3 pacotes reais (vídeo, foto, carrossel) da etapa 07 | 07 | a conferir |
+| Aprovar a criação da unidade systemd `scrapagentes-worker` (--user) na VPS | 07/09 | pendente (não criada) |
 | Chave de API de produção definida por ele | 09 | pendente |
 
 ## URLs de teste do Instagram (etapa 03)

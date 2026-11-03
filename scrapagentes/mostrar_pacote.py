@@ -46,17 +46,18 @@ def main(argv: list[str] | None = None) -> int:
     config = Config(dados=dados)
     conn = conectar(config.banco)
     migrar(conn)
-    r = servico.ingerir(
+    r = servico.enfileirar_ingestao(
         conn, config, rede="manual", url=None, nicho="demonstracao", subnichos=["exemplo", "video"],
         entrada={"arquivos": [str(args.video)], "conta": "conta_exemplo", "formato": "video",
                  "data_publicacao": "2026-03-10", "legenda": args.legenda,
                  "metricas": {"curtidas": 120, "comentarios": 8}},
     )
+    servico.processar_fila(conn, config)
     job = servico.obter_job(conn, r["job_id"])
     if job["estado"] != "concluido":
         print(f"ERRO: {job['erro']}", file=sys.stderr)
         return 1
-    print(formatar(servico.montar_pacote(conn, r["item_id"])))
+    print(formatar(servico.montar_pacote(conn, job["item_id"])))
     busca = servico.buscar(conn, nicho="demonstracao", subnicho=["exemplo", "video"], formato="video",
                            metrica="curtidas", minimo=100, q="hackers")
     print("\n== BUSCA COMBINADA ==\nnicho=demonstracao subnicho=exemplo,video (todos) formato=video "

@@ -27,19 +27,25 @@ def test_documentacao_desligada_por_padrao(cliente):
 
 
 def test_criar_item_e_ler_job(envio, cliente):
-    r = envio.foto(subnichos=["Dieta", "Treino"])
+    r = envio.foto(subnichos=["Dieta", "Treino"], executar=False)
     assert r.status_code == 202
     corpo = r.json()
+    assert corpo["item_id"] is None  # item novo: o worker ainda vai criá-lo
+    job = cliente.get(f"/jobs/{corpo['job_id']}").json()
+    assert job["estado"] == "pendente" and job["tentativas"] == 0 and job["item_id"] is None
+    envio.drenar()
     job = cliente.get(f"/jobs/{corpo['job_id']}").json()
     assert job["estado"] == "concluido" and job["tipo"] == "ingestao"
-    assert job["item_id"] == corpo["item_id"]
+    assert job["item_id"] is not None and job["tentativas"] == 1
     assert cliente.get("/jobs/9999").status_code == 404
 
 
-def test_duas_coletas_geram_dois_conjuntos_sem_sobrescrever(envio, cliente, config):
+def test_duas_coletas_geram_dois_conjuntos_sem_sobrescrever(envio, cliente, config, drenar):
     item_id = envio.criar(envio.foto, curtidas="10", comentarios="2")
     r = cliente.post(f"/itens/{item_id}/coletas", json={"metricas": {"curtidas": 25, "comentarios": 4}})
     assert r.status_code == 202
+    assert cliente.get(f"/jobs/{r.json()['job_id']}").json()["estado"] == "pendente"
+    drenar()
     assert cliente.get(f"/jobs/{r.json()['job_id']}").json()["estado"] == "concluido"
 
     linhas = sqlite3.connect(config.banco).execute(
@@ -56,9 +62,10 @@ def test_duas_coletas_geram_dois_conjuntos_sem_sobrescrever(envio, cliente, conf
     assert pacote["metricas"]["valores"] == {"comentarios": 4.0, "curtidas": 25.0}
 
 
-def test_coleta_sem_metricas_vira_job_com_erro(envio, cliente):
+def test_coleta_sem_metricas_vira_job_com_erro(envio, cliente, drenar):
     item_id = envio.criar(envio.foto)
     r = cliente.post(f"/itens/{item_id}/coletas")
+    drenar()
     job = cliente.get(f"/jobs/{r.json()['job_id']}").json()
     assert job["estado"] == "erro" and "nenhuma métrica" in job["erro"]
     assert cliente.post("/itens/9999/coletas").status_code == 404
@@ -122,12 +129,13 @@ def test_busca_combinada_nicho_subnicho_formato_periodo(envio, cliente):
     assert ids(rede="instagram") == set()
 
 
-def test_busca_por_metrica_usa_a_coleta_mais_recente(envio, cliente):
+def test_busca_por_metrica_usa_a_coleta_mais_recente(envio, cliente, drenar):
     a = envio.criar(envio.foto, url="manual:a", curtidas="100")
     b = envio.criar(envio.foto, url="manual:b", curtidas="10")
     sem = envio.criar(envio.foto, url="manual:c")
     cliente.post(f"/itens/{b}/coletas", json={"metricas": {"curtidas": 500}})  # b passa a 500
     cliente.post(f"/itens/{a}/coletas", json={"metricas": {"curtidas": 20}})   # a cai para 20
+    drenar()
 
     def ids(**params):
         return {i["id"] for i in cliente.get("/itens", params=params).json()["itens"]}

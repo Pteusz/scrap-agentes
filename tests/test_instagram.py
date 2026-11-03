@@ -213,7 +213,7 @@ def test_proxy_fora_do_ar_vira_indisponivel_sem_vazar_credencial(tmp_path):
 
 # ---------- integração com o núcleo ----------
 
-def test_ingestao_pela_api_limpa_a_pasta_temporaria(cliente, midias, tmp_path, monkeypatch):
+def test_ingestao_pela_api_limpa_a_pasta_temporaria(cliente, midias, tmp_path, monkeypatch, drenar):
     tmp = tmp_path / "ig-tmp"
     tmp.mkdir()
     monkeypatch.setitem(
@@ -225,15 +225,16 @@ def test_ingestao_pela_api_limpa_a_pasta_temporaria(cliente, midias, tmp_path, m
         "subnichos": "treino",
     })
     assert r.status_code == 202, r.text
+    drenar()
     job = cliente.get(f"/jobs/{r.json()['job_id']}").json()
     assert job["estado"] == "concluido", job
     assert list(tmp.iterdir()) == []
-    ctx = cliente.get(f"/itens/{r.json()['item_id']}/pacote").json()["contexto"]
+    ctx = cliente.get(f"/itens/{job['item_id']}/pacote").json()["contexto"]
     assert ctx["rede"] == "instagram" and ctx["link"] == "https://www.instagram.com/p/REEL000001/"
     assert ctx["formato"] == "video" and ctx["conta"] == "conta_exemplo"
 
 
-def test_erro_do_adaptador_vira_job_com_erro_e_limpa(cliente, midias, tmp_path, monkeypatch):
+def test_erro_do_adaptador_vira_job_com_erro_e_limpa(cliente, midias, tmp_path, monkeypatch, drenar):
     tmp = tmp_path / "ig-tmp"
     tmp.mkdir()
     monkeypatch.setitem(
@@ -243,6 +244,7 @@ def test_erro_do_adaptador_vira_job_com_erro_e_limpa(cliente, midias, tmp_path, 
     r = cliente.post("/itens", data={
         "url": "https://www.instagram.com/p/SUMIU00001/", "nicho": "saude",
     })
+    drenar()
     job = cliente.get(f"/jobs/{r.json()['job_id']}").json()
     assert job["estado"] == "erro" and job["erro"].startswith("nao_encontrado")
     assert list(tmp.iterdir()) == []

@@ -84,9 +84,10 @@ def test_falha_nos_frames_vira_job_com_erro_sem_sobras(envio, cliente, config, m
     assert conn.execute("SELECT COUNT(*) FROM item").fetchone()[0] == 0
 
 
-def test_metrica_mais_recente_no_pacote_e_na_busca(envio, cliente):
+def test_metrica_mais_recente_no_pacote_e_na_busca(envio, cliente, drenar):
     item_id = envio.criar(envio.video, metricas=json.dumps({"curtidas": 10}))
     cliente.post(f"/itens/{item_id}/coletas", json={"metricas": {"curtidas": 50}})
+    drenar()
     p = cliente.get(f"/itens/{item_id}/pacote").json()
     assert p["metricas"]["valores"]["curtidas"] == 50
     assert [i["id"] for i in cliente.get("/itens", params={"metrica": "curtidas", "min": 40}).json()["itens"]] == [item_id]
