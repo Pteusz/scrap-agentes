@@ -4,3 +4,5 @@ python-multipart
 instaloader>=4.16
 pysocks
 faster-whisper
+numpy
+pillow

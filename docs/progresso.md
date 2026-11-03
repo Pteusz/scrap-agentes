@@ -8,7 +8,7 @@ Atualize ao fim de cada etapa, colando a saída dos comandos como evidência.
 | 02 | Base e contrato do adaptador | concluída (2026-11-03) | ver "Evidências da etapa 02" |
 | 03 | Adaptador Instagram | concluída (2026-11-03) | ver "Evidências da etapa 03" |
 | 04 | Transcrição | concluída (2026-11-03) | ver "Evidências da etapa 04" |
-| 05 | Frames e marcadores | pendente | |
+| 05 | Frames e marcadores | em andamento | código e testes prontos; falta aprovação da folha de contato |
 | 06 | Pacote e busca | pendente | |
 | 07 | Fila e worker | pendente | |
 | 08 | Métrica sob demanda | pendente | |
@@ -163,6 +163,24 @@ Decisões e observações:
 - Modelos baixados ficam no cache do usuário `pteuz` (`~/.cache/huggingface`), fora do repositório.
 - Aprovado pelo Mateus: modelo `small`, limite de WER de 10% (medido 6,4% na fixture). Sem revisão por subagente nesta etapa (não solicitada).
 
+## Evidências da etapa 05 (em andamento)
+Módulo `scrapagentes/frames.py` (decisão sobre bibliotecas em `docs/decisoes.md`). Comando: `python -m scrapagentes.frames <video> [--saida pasta] [--folha folha.jpg]`. Pillow só é usado na folha de contato.
+
+Testes (VPS):
+```
+$ .venv/bin/python -m pytest
+82 passed   (11 novos em tests/test_frames.py)
+```
+Cobertos com vídeos sintéticos do ffmpeg: 30 s com 6 cenas de cor (todas as cenas têm frame, segundos sem repetição); 30 s estático (amostragem uniforme, 2+ por terço); começo preto (nenhum frame preto escolhido); 60 cenas curtas (teto 16, 2+ por terço); marcadores nas bordas (d/3 e 2d/3); determinismo; vídeo de 1,5 s; erros claros.
+
+Primeira medição com um vídeo real (`fala_pt.mp4`, 67,9 s, pessoa falando com cortes para telas de slides e de repositório):
+```
+16 frames, tempo=11.1s, duracao=67.9s, tempo/duracao=0.16x
+ 1 0.00s comeco | 2 9.50s comeco | 3 12.75s comeco | 4 16.75s comeco | 5 23.00s meio | ... | 11 45.25s meio
+12 52.00s fim | 13 56.75s fim | 14 60.25s fim | 15 63.75s fim | 16 67.50s fim
+```
+Pendente: folha de contato de 2 vídeos de tipos diferentes escolhidos pelo Mateus e a aprovação dele; só então a etapa fecha. Sem revisão por subagente (não solicitada).
+
 ## Insumos que dependem do Mateus
 | insumo | etapa | estado |
 |---|---|---|
@@ -176,6 +194,7 @@ Decisões e observações:
 | Conferir os números do relatório do adaptador contra o Instagram | 03 | feito (Mateus confirmou que batem) |
 | Trecho de vídeo em português de 30 a 60 s e a transcrição correta feita à mão | 04 | recebido (reel `DfQdA_OS8m2`, 67,9 s; ligeiramente acima de 60 s) |
 | Limite aceito de erro de transcrição (WER) e aprovação do modelo | 04 | feito: modelo `small`, WER até 10% (medido: 6,4%) |
+| 2 vídeos reais de tipos diferentes (ex.: pessoa falando para a câmera e cortes rápidos) e aprovação da folha de contato | 05 | pendente (folha do `fala_pt.mp4` já gerada para ele ver) |
 | Chave de API de produção definida por ele | 09 | pendente |
 
 ## URLs de teste do Instagram (etapa 03)
