@@ -179,7 +179,9 @@ Primeira medição com um vídeo real (`fala_pt.mp4`, 67,9 s, pessoa falando com
  1 0.00s comeco | 2 9.50s comeco | 3 12.75s comeco | 4 16.75s comeco | 5 23.00s meio | ... | 11 45.25s meio
 12 52.00s fim | 13 56.75s fim | 14 60.25s fim | 15 63.75s fim | 16 67.50s fim
 ```
-Pendente: folha de contato de 2 vídeos de tipos diferentes escolhidos pelo Mateus e a aprovação dele; só então a etapa fecha. Sem revisão por subagente (não solicitada).
+Reels do Mateus (`Dd4DyYzgCvf`, 125,6 s: 16 frames, 16,7 s, 0,13x; `DcrYj5FDSUC`, 8,6 s: 10 frames, 4,5 s, 0,52x). Ajuste aprovado por ele após a primeira folha: o preenchimento uniforme e a cobertura por terço preferem frames diferentes dos já escolhidos (repetidos só se não houver outro). No vídeo curto o final parado caiu de 4 para 2 frames; sobraram 2 por exigência do mínimo por terço, e a fusão entre cenas aparece em 4 frames. Suíte: 82 passed.
+
+Pendente: aprovação da folha de contato (`tmp_folhas/`) pelo Mateus; originalmente seriam 2 vídeos de tipos diferentes escolhidos pelo Mateus e a aprovação dele; só então a etapa fecha. Sem revisão por subagente (não solicitada).
 
 ## Insumos que dependem do Mateus
 | insumo | etapa | estado |

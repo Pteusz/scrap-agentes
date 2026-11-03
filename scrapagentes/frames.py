@@ -156,13 +156,22 @@ def selecionar_indices(n: int, fps: float, d: float, cenas_s: list[float],
 
     # 4. poucos candidatos: completa com amostragem uniforme no tempo
     escolhidos = set(mantidos)
+
+    def distintos(ks):
+        """Dos índices dados, os que não repetem nenhum já escolhido (se todos repetem, devolve todos)."""
+        novos = [k for k in ks if all(np.abs(a.pequena[k] - a.pequena[m]).mean() >= p.dedup_diferenca
+                                      for m in escolhidos)]
+        return novos or list(ks)
+
     if len(escolhidos) < p.minimo_candidatos:
         for j in range(p.minimo_candidatos):
-            alvo = (j + 0.5) * d / p.minimo_candidatos * fps
-            k = int(util[np.abs(util - alvo).argmin()])
-            escolhidos.add(k)
             if len(escolhidos) >= p.minimo_candidatos:
                 break
+            alvo = (j + 0.5) * d / p.minimo_candidatos * fps
+            livres = [k for k in util.tolist() if k not in escolhidos]
+            if not livres:
+                break
+            escolhidos.add(min(distintos(livres), key=lambda k: (abs(k - alvo), k)))
 
     # 5. teto: reduz por amostragem uniforme entre os candidatos
     ordem = sorted(escolhidos)
@@ -184,6 +193,7 @@ def selecionar_indices(n: int, fps: float, d: float, cenas_s: list[float],
             pontos = sorted([lim_ini] + [t_de(k) for k in escolhidos if marcador(t_de(k), d) == terco] + [lim_fim])
             vazio = max(range(len(pontos) - 1), key=lambda i: (pontos[i + 1] - pontos[i], -i))
             alvo = (pontos[vazio] + pontos[vazio + 1]) / 2
+            livres = distintos(livres)
             estaveis = [k for k in livres if a.dif_anterior[k] <= p.diferenca_estavel] or livres
             escolhidos.add(min(estaveis, key=lambda k: (abs(t_de(k) - alvo), k)))
 
