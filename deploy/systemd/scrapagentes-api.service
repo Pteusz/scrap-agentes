@@ -1,0 +1,13 @@
+[Unit]
+Description=scrapagentes API
+StartLimitIntervalSec=0
+
+[Service]
+WorkingDirectory=%h/scrapagentes
+EnvironmentFile=%h/.config/scrapagentes/ambiente
+ExecStart=%h/scrapagentes/.venv/bin/uvicorn --factory scrapagentes.api:criar_app_do_ambiente --host 172.18.0.1 --port 8100 --timeout-keep-alive 10 --no-server-header
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target

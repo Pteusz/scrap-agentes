@@ -11,6 +11,7 @@ from fastapi.responses import FileResponse, JSONResponse
 
 from scrapagentes import banco, servico
 from scrapagentes.config import Config
+from scrapagentes.limites import LimiteDeCorpo, LimiteDeRequisicoes
 
 CAMPOS_METRICA = ("curtidas", "comentarios", "visualizacoes", "compartilhamentos", "seguidores_conta")
 
@@ -21,6 +22,13 @@ def criar_app(config: Config) -> FastAPI:
         docs_url="/docs" if config.docs else None,
         redoc_url=None,
         openapi_url="/openapi.json" if config.docs else None,
+    )
+    # o último adicionado fica por fora: primeiro a taxa, depois o tamanho e o tempo do corpo
+    app.add_middleware(
+        LimiteDeCorpo, maximo_bytes=config.upload_max_mib * 1024 * 1024, prazo_corpo_s=config.prazo_corpo_s
+    )
+    app.add_middleware(
+        LimiteDeRequisicoes, por_minuto=config.requisicoes_por_minuto, chave_valida=config.chave_api
     )
     config.dados.mkdir(parents=True, exist_ok=True)
     conn_migracao = banco.conectar(config.banco)

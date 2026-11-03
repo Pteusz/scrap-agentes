@@ -1,0 +1,16 @@
+[Unit]
+Description=scrapagentes worker (fila de ingestao e coleta)
+StartLimitIntervalSec=0
+
+[Service]
+WorkingDirectory=%h/scrapagentes
+EnvironmentFile=%h/.config/scrapagentes/ambiente
+ExecStart=%h/scrapagentes/.venv/bin/python -m scrapagentes.trabalhador
+Nice=10
+Restart=always
+RestartSec=5
+# SIGTERM deixa o job atual terminar; passado o prazo o systemd mata e o worker se recupera ao subir
+TimeoutStopSec=120
+
+[Install]
+WantedBy=default.target

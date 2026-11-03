@@ -1,0 +1,9 @@
+[Unit]
+Description=scrapagentes backup (banco e midia)
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/scrapagentes
+EnvironmentFile=%h/.config/scrapagentes/ambiente
+ExecStart=%h/scrapagentes/.venv/bin/python -m scrapagentes.backup --destino %h/scrapagentes-backup --manter-dias 7
+Nice=15

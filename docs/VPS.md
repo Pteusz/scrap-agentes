@@ -111,3 +111,55 @@ No painel do NPM (`http://194.163.134.245:81`): apagar o Proxy Host `scrapagente
 
 ### Comparação antes e depois
 Portas em escuta antes: 22, 53, 80, 81, 443, 631, 5432, 4100 (172.18.0.1), 51775 (127.0.0.1). Depois: as mesmas **mais** `172.18.0.1:8100`. `agentes-trabalhador`, `docker`, `postgresql@16-main` e `fail2ban` continuam `active`.
+
+## 5. Produção (etapa 09, 2026-11-03)
+
+Substitui o serviço mínimo da etapa 01. Tudo no home de `pteuz`, sem `sudo`.
+
+| peça | onde |
+|---|---|
+| API | `scrapagentes-api.service` (uvicorn em `172.18.0.1:8100`; o NPM encaminha `scrapagentes.khoral.com.br` para lá, com Let's Encrypt) |
+| Worker | `scrapagentes-worker.service` (`python -m scrapagentes.trabalhador`) |
+| Backup | `scrapagentes-backup.timer` (todo dia 03:30) -> `scrapagentes-backup.service` -> `~/scrapagentes-backup`, guarda 7 dias |
+| Unidades | versionadas em `deploy/systemd/`; instaladas em `~/.config/systemd/user/` |
+| Ambiente | `~/.config/scrapagentes/ambiente` (modo 600): `SCRAPAGENTES_CHAVE_API`, `SCRAPAGENTES_DADOS=/home/pteuz/scrapagentes-data`; limites opcionais: `SCRAPAGENTES_UPLOAD_MAX_MIB` (200), `SCRAPAGENTES_REQUISICOES_POR_MIN` (120), `SCRAPAGENTES_PRAZO_CORPO_S` (300) |
+| Logs | journal do usuário (o `journald` faz a rotação): `journalctl --user -u scrapagentes-api -f` |
+
+Os comandos abaixo rodam na VPS (`ssh vps2`); em SSH sem login, exporte antes `XDG_RUNTIME_DIR=/run/user/$(id -u)`.
+
+### Operação
+```bash
+systemctl --user status scrapagentes-api scrapagentes-worker
+systemctl --user restart scrapagentes-api scrapagentes-worker
+systemctl --user stop scrapagentes-worker   # só o worker; a fila acumula e nada se perde
+journalctl --user -u scrapagentes-worker --since "1 hour ago"
+```
+Atualizar o código (se um job estiver rodando, a recuperação do worker o reexecuta ao subir):
+```bash
+cd ~/scrapagentes && git pull --ff-only && .venv/bin/pip install -r requirements.txt \
+  && .venv/bin/python -m pytest -q && systemctl --user restart scrapagentes-api scrapagentes-worker
+```
+Mudou uma unidade em `deploy/systemd/`: copie para `~/.config/systemd/user/`, rode `systemctl --user daemon-reload` e reinicie.
+
+### Backup e restauração
+```bash
+set -a; . ~/.config/scrapagentes/ambiente; set +a
+.venv/bin/python -m scrapagentes.backup --destino ~/scrapagentes-backup
+.venv/bin/python -m scrapagentes.backup --verificar ~/scrapagentes-backup/backup-AAAAMMDD-HHMMSS
+```
+Restaurar de verdade: pare API e worker, mova `~/scrapagentes-data` para o lado, copie `scrapagentes.sqlite` e `midia/` do backup para uma nova `~/scrapagentes-data`, suba de novo. O backup fica no mesmo disco da VPS: **ainda não há cópia externa** (decisão do Mateus pendente).
+
+### Reverter para o serviço mínimo da etapa 01
+```bash
+systemctl --user disable --now scrapagentes-worker scrapagentes-backup.timer scrapagentes-api
+cp ~/.config/systemd/user/scrapagentes-api.service.etapa01 ~/.config/systemd/user/scrapagentes-api.service
+systemctl --user daemon-reload && systemctl --user enable --now scrapagentes-api
+```
+O banco e a mídia em `~/scrapagentes-data` não são apagados por isso. A reversão total da etapa 01 continua na seção 4.
+
+### Trocar a chave da API
+Edite `~/.config/scrapagentes/ambiente` (mantenha o modo 600) e rode `systemctl --user restart scrapagentes-api`. Não escreva a chave em comando nem em log.
+
+### Limites conhecidos
+O limite de requisições é em memória, por processo (há um só). Se um upload de dezenas de MiB receber 413 vindo do NPM, é preciso ajustar `client_max_body_size` no proxy host (mudança do Mateus). A porta 80 responde sem redirecionar para https.
+

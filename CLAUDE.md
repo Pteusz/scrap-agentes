@@ -44,6 +44,9 @@ SCRAPAGENTES_DADOS=/tmp/sa-dev SCRAPAGENTES_CHAVE_API=<chave de desenvolvimento>
 # A API só enfileira: sem o worker rodando, os jobs ficam `pendente`. --uma-vez esvazia a fila e sai.
 SCRAPAGENTES_DADOS=/tmp/sa-dev .venv/bin/python -m scrapagentes.trabalhador [--uma-vez]
 
+# backup do banco e da mídia (--verificar PASTA restaura em pasta temporária e confere)
+.venv/bin/python -m scrapagentes.backup --destino /tmp/sa-backup
+
 # gerar as fixtures de mídia à mão
 .venv/bin/python -m scrapagentes.fixtures /tmp/fixtures
 ```
@@ -65,9 +68,9 @@ SCRAPAGENTES_DADOS=/tmp/sa-dev .venv/bin/python -m scrapagentes.trabalhador [--u
 SCRAPAGENTES_TESTES_REAIS=1 .venv/bin/python -m pytest tests_reais -m real -p no:cacheprovider
 ```
 
-Variáveis de ambiente: `SCRAPAGENTES_DADOS` (pasta do banco e da mídia, padrão `dados`), `SCRAPAGENTES_CHAVE_API` (sem ela toda rota exceto `/saude` responde 401), `SCRAPAGENTES_DOCS=1` (liga `/docs`; fica desligado por padrão), `SCRAPAGENTES_FFMPEG` (caminho do ffmpeg, opcional), `SCRAPAGENTES_PROXY` (só o adaptador Instagram lê; ex. `socks5h://127.0.0.1:1080`, pode ter credenciais, nunca em log), `SCRAPAGENTES_IG_INTERVALO_S` (intervalo mínimo entre consultas ao Instagram, padrão 5), `SCRAPAGENTES_WHISPER_MODELO` (padrão `small`), `SCRAPAGENTES_IDIOMA` (padrão `pt`), `SCRAPAGENTES_FRAMES_<NOME>` (parâmetros da seleção de frames, ver `docs/decisoes.md`).
+Variáveis de ambiente: `SCRAPAGENTES_DADOS` (pasta do banco e da mídia, padrão `dados`), `SCRAPAGENTES_CHAVE_API` (sem ela toda rota exceto `/saude` responde 401), `SCRAPAGENTES_DOCS=1` (liga `/docs`; fica desligado por padrão), `SCRAPAGENTES_FFMPEG` (caminho do ffmpeg, opcional), `SCRAPAGENTES_PROXY` (só o adaptador Instagram lê; ex. `socks5h://127.0.0.1:1080`, pode ter credenciais, nunca em log), `SCRAPAGENTES_IG_INTERVALO_S` (intervalo mínimo entre consultas ao Instagram, padrão 5), `SCRAPAGENTES_WHISPER_MODELO` (padrão `small`), `SCRAPAGENTES_IDIOMA` (padrão `pt`), `SCRAPAGENTES_FRAMES_<NOME>` (parâmetros da seleção de frames, ver `docs/decisoes.md`), `SCRAPAGENTES_UPLOAD_MAX_MIB` (corpo máximo, padrão 200), `SCRAPAGENTES_REQUISICOES_POR_MIN` (por chave, padrão 120), `SCRAPAGENTES_PRAZO_CORPO_S` (padrão 300), `SCRAPAGENTES_BACKUP` (pasta dos backups, padrão `backups`).
 
-Ainda não existem: testes reais contra as demais redes (etapa 10).
+Em produção na VPS (etapa 09): API e worker como unidades `systemd --user`; operação em `docs/VPS.md`, seção 5. Ainda não existem: testes reais contra as demais redes (etapa 10).
 
 ## Mapa
 - `docs/SPEC.md` — modelo de dados, contrato do adaptador, API, regras. É o contrato do projeto.

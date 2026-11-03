@@ -12,7 +12,7 @@ Atualize ao fim de cada etapa, colando a saída dos comandos como evidência.
 | 06 | Pacote e busca | concluída | formato do pacote aprovado pelo Mateus |
 | 07 | Fila e worker | concluída (2026-11-03) | ver "Evidências da etapa 07" |
 | 08 | Métrica sob demanda | concluída (2026-11-03) | ver "Evidências da etapa 08" |
-| 09 | Publicação e endurecimento | pendente | |
+| 09 | Publicação e endurecimento | concluída, aguardando validação do Mateus (2026-11-03) | ver "Evidências da etapa 09" |
 | 10 | Molde para novas redes | pendente | |
 
 ## Evidências da etapa 01
@@ -252,6 +252,36 @@ Três conjuntos preservados, com datas distintas e valores que de fato mudaram; 
 
 Recoleta automática: não existe. O teste de varredura acima passa e o worker só consome jobs criados pela rota ou pela ingestão. Revisão por subagente não feita (não solicitada), como nas etapas anteriores.
 
+## Evidências da etapa 09
+Produção em `https://scrapagentes.khoral.com.br` (Nginx Proxy Manager -> `172.18.0.1:8100`). API e worker são unidades `systemd --user` (Linger ligado) com `Restart=always`; backup diário por timer (03:30). Operação em `docs/VPS.md`, seção 5.
+
+Testes de fora da VPS (máquina do Mateus, `curl.exe` do Windows, verificação TLS ligada):
+```
+/saude                       -> {"status":"ok"} [200]
+/itens sem chave             -> 401
+/itens chave errada          -> 401
+/itens chave certa           -> {"total":0,...} [200]
+/docs, /openapi.json, /redoc -> 404, 404, 404
+POST /itens com 3 MiB pelo proxy -> 422 (a app respondeu; o NPM não barrou)
+porta 8100 no IP público     -> inacessível
+certificado                  -> Let's Encrypt, CN scrapagentes.khoral.com.br, 2026-11-03 a 2027-02-01
+http://.../saude (porta 80)  -> 200 (sem redirecionamento para https)
+```
+Reinício: `kill -9` nos dois processos -> ambos `active` em até 15 s com PIDs novos (1268039/1268047 -> 1268737/1268748); `/saude` 200; `systemctl --user restart` também volta; as 3 unidades `enabled`; `Linger=yes`.
+
+Ponta a ponta no domínio (nicho `teste-producao`, subnicho `e2e`): `POST /itens` x3 -> jobs 1, 2, 3 (202) -> `GET /jobs/N` até `concluido` (vídeo transcrito levou cerca de 3 min; os outros esperaram na fila, um job pesado por vez) -> `GET /itens?nicho=teste-producao&subnicho=e2e` devolveu `total 3` (vídeo @odanilogato, foto @rockstargames, carrossel @mateus.maverick) -> `GET /itens/N/pacote`: vídeo 16 imagens (frames), foto 1, carrossel 4, 2 métricas cada, texto presente; `GET /itens/1/imagens/1` -> 200, 105313 B. Os 3 itens ficaram no banco de produção.
+
+Backup e restauração (na VPS, banco com os 3 itens):
+```
+backup criado: /home/pteuz/scrapagentes-backups/backup-20261103-222034
+{'itens': 3, 'imagens': 21, 'metricas': 6, 'com_legenda': 3, 'arquivos_de_midia': 22}
+```
+A verificação copia o backup para pasta temporária, abre o banco (`integrity_check` ok) e conta as linhas. O serviço do timer também rodou (status=0/SUCCESS); próximo disparo em 2026-11-04 03:30.
+
+Comparação com o inventário da etapa 01: portas antes 22, 53, 80, 81, 443, 631, 5432, 172.18.0.1:4100, 127.0.0.1:51775; agora as mesmas mais `172.18.0.1:8100` e `127.0.0.1:1080` (esta é a ponta do túnel do celular da etapa 03, não é desta etapa). `docker` e `fail2ban` `active`, processo `agentes-trabalhador` presente, os dois crons (`/opt/streamscrap` 06:00 e o `@reboot` do painel) intactos, NPM e PostgreSQL não tocados.
+
+Limites (`scrapagentes/limites.py`, testes em `tests/test_producao.py`): corpo máximo 200 MiB (413), prazo de 300 s para receber o corpo (408), 120 requisições/min por chave (429 com `Retry-After`; chaves erradas dividem um balde, o que freia adivinhação; `/saude` livre), keep-alive de 10 s no uvicorn. A chave nunca é guardada nem registrada.
+
 ## Insumos que dependem do Mateus
 | insumo | etapa | estado |
 |---|---|---|
@@ -268,8 +298,11 @@ Recoleta automática: não existe. O teste de varredura acima passa e o worker s
 | 2 vídeos reais de tipos diferentes (ex.: pessoa falando para a câmera e cortes rápidos) e aprovação da folha de contato | 05 | feito: reels `Dd4DyYzgCvf` e `DcrYj5FDSUC`; folhas aprovadas |
 | Aprovação do formato do pacote de um vídeo real | 06 | feito (pacote do `fala_pt.mp4`) |
 | Conferir os 3 pacotes reais (vídeo, foto, carrossel) da etapa 07 | 07 | a conferir |
-| Aprovar a criação da unidade systemd `scrapagentes-worker` (--user) na VPS | 07/09 | pendente (não criada) |
-| Chave de API de produção definida por ele | 09 | pendente |
+| Aprovar a criação da unidade systemd `scrapagentes-worker` (--user) na VPS | 07/09 | feito (aprovado; instalada na etapa 09) |
+| Chave de API de produção | 09 | feito: arquivo `~/.config/scrapagentes/ambiente` (600) criado na VPS a pedido dele; ler com `ssh vps2 'grep CHAVE ~/.config/scrapagentes/ambiente'` |
+| Validar o ponta a ponta no domínio (3 posts reais) | 09 | a validar |
+| Decidir se `POST /itens` deve devolver `item_id` para itens novos (hoje `null`) | 07 | em aberto |
+| Destino da cópia externa do backup (hoje só na própria VPS) | 09 | em aberto |
 
 ## URLs de teste do Instagram (etapa 03)
 Recebidas do Mateus em 2026-11-03; guardadas sem `utm_source`, `rpxt` e `srtk` (parâmetros de rastreio de compartilhamento, que não identificam o post).
