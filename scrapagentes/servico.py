@@ -191,6 +191,7 @@ def ingerir(
         "subnichos": tags, "reprocessar": reprocessar,
     })
     midia_nova = None
+    resolvido = None
     try:
         resolvido = adaptador.resolver(url_canonica, entrada)
         metricas = _validar_metricas(adaptador, resolvido.metricas)
@@ -233,6 +234,9 @@ def ingerir(
     except Exception as exc:
         log.exception("falha inesperada na ingestão (job %s)", job_id)
         _fechar_job(conn, job_id, f"erro_interno: {type(exc).__name__}")
+    finally:
+        if resolvido is not None and resolvido.pasta_temporaria is not None:
+            shutil.rmtree(resolvido.pasta_temporaria, ignore_errors=True)
     if midia_nova is not None:
         shutil.rmtree(midia_nova, ignore_errors=True)
     return {"job_id": job_id, "item_id": existente["id"] if existente else None}

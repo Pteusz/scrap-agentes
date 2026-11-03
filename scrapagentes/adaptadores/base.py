@@ -47,6 +47,8 @@ class Resolvido:
     duracao_s: float | None
     arquivos: list[Path]
     metricas: dict[str, float] = field(default_factory=dict)
+    # Pasta temporária criada pelo adaptador para os arquivos; o núcleo a apaga depois de copiar.
+    pasta_temporaria: Path | None = None
 
 
 class Adaptador(ABC):

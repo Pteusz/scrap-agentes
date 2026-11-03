@@ -6,7 +6,7 @@ Atualize ao fim de cada etapa, colando a saída dos comandos como evidência.
 |---|---|---|---|
 | 01 | Reconhecimento da VPS e esqueleto de deploy | concluída (2026-11-03) | ver "Evidências da etapa 01" |
 | 02 | Base e contrato do adaptador | concluída (2026-11-03) | ver "Evidências da etapa 02" |
-| 03 | Adaptador Instagram | pendente | |
+| 03 | Adaptador Instagram | concluída (2026-11-03) | ver "Evidências da etapa 03" |
 | 04 | Transcrição | pendente | |
 | 05 | Frames e marcadores | pendente | |
 | 06 | Pacote e busca | pendente | |
@@ -93,6 +93,46 @@ Decisões e observações:
 - Sem segredos no repositório: a chave de API só vem de `SCRAPAGENTES_CHAVE_API`; os testes usam um valor fictício.
 - Não feito (fora do escopo): Instagram, transcrição e frames reais, worker, publicação.
 
+## Evidências da etapa 03
+Viabilidade e decisões em `docs/viabilidade-instagram.md`; túnel do celular em `docs/tunel-celular.md`.
+
+Testes offline (VPS, fonte gravada, sem rede):
+```
+$ .venv/bin/python -m pytest
+64 passed, 1 warning
+```
+(36 da etapa 02 + 28 novos: reconhecimento e canonização de URL, classificação foto/vídeo/carrossel, métricas ausentes omitidas, suíte de contrato com 3 formatos e 5 erros tipados, limpeza da pasta temporária em sucesso e falha, limitador de intervalo, proxy inválido sem vazar credencial, proxy fora do ar -> `indisponivel` sem vazar credencial, ingestão pela API.)
+
+Testes reais (`SCRAPAGENTES_TESTES_REAIS=1 .venv/bin/python -m pytest tests_reais -m real`):
+```
+8 passed, 6 warnings in 38.30s
+```
+foto, carrossel, 4 reels, reel com falha do servidor (erro tipado) e post inexistente (erro tipado).
+
+Relatório do adaptador (`python -m scrapagentes.adaptadores.instagram <url>`), para o Mateus conferir:
+| URL | formato | conta | data (UTC) | curtidas | comentários | duração | mídia |
+|---|---|---|---|---|---|---|---|
+| /p/DfSJbEzDXf5/ | foto | rockstargames | 2026-11-03 14:56 | 1.026.938 | 9.341 | — | 1 jpg |
+| /reel/DczJptKyQtf/ | video | nelson.miranda.prof | 2026-09-02 21:06 | 17.099 | 130 | 77,11 s | 1 mp4 (16 MB) |
+| /p/Cyn3G8FLV1v/ | carrossel | mateus.maverick | 2023-10-20 13:47 | 4 | 0 | — | 4 jpg |
+
+Erros e proxy:
+```
+reel DfSLSZpjl_4 (falha do servidor) -> ERRO indisponivel: o Instagram não devolveu os dados do post (...)
+SCRAPAGENTES_PROXY=socks5h://127.0.0.1:1080 (túnel) + carrossel -> formato carrossel, 4 arquivos
+SCRAPAGENTES_PROXY=socks5h://127.0.0.1:9 (fora do ar) -> ERRO indisponivel: falha de conexão com o Instagram (via proxy configurado)
+```
+
+Decisões e observações:
+- Fonte: Instaloader 4.16 anônimo (`instaloader>=4.16` e `pysocks` em `requirements.txt`). Sem login, sem cookies, sem proxy por padrão.
+- `Resolvido` ganhou `pasta_temporaria` (interno, não muda o SPEC): o adaptador baixa para uma pasta temporária e o núcleo a apaga depois de copiar, também em caso de erro.
+- `visualizacoes` normalmente não vem em reels anônimos e fica ausente; a duração vem do `ffmpeg`.
+- Carrossel com vídeo em algum slide -> `formato_nao_suportado` (fora do escopo desta etapa).
+- Reingestão de um item existente baixa a mídia de novo (otimização para etapa futura).
+- Intervalo mínimo de 5 s entre consultas (`SCRAPAGENTES_IG_INTERVALO_S`).
+- Risco: o `doc_id` do Instagram muda de tempos em tempos; sintoma é `indisponivel` em tudo; saída é atualizar o Instaloader.
+- Conferência dos números pelo Mateus: tudo bate. Túnel `autossh` validado. Sem revisão por subagente nesta etapa (não solicitada). Push aguarda confirmação do Mateus.
+
 ## Insumos que dependem do Mateus
 | insumo | etapa | estado |
 |---|---|---|
@@ -100,8 +140,19 @@ Decisões e observações:
 | Registro DNS de `scrapagentes.khoral.com.br` apontando para a VPS | 01 | feito |
 | Confirmar que `https://github.com/Pteusz/scrap-agentes.git` é o destino do projeto, qual é a branch padrão e se o repositório já tem conteúdo | 01 | feito (destino confirmado, padrão `main`, estava vazio) |
 | Confirmação antes do primeiro push ao GitHub | 01 | teste de escrita feito; **push do conteúdo real ainda pendente** |
-| 3 URLs públicas do Instagram: um vídeo, uma foto, um carrossel | 03 | pendente |
-| Decisão sobre proxy residencial (provedor e credenciais por variável de ambiente) | 03 | pendente |
+| 3 URLs públicas do Instagram: um vídeo, uma foto, um carrossel | 03 | recebidas em 2026-11-03 (abaixo, sem parâmetros de rastreio) |
+| Decisão sobre proxy residencial | 03 | resolvido: não é necessário agora; túnel do celular pronto como reserva (`docs/tunel-celular.md`) |
+| Trocar o túnel manual do Termux por `autossh` e desligar a otimização de bateria do Termux | 03 | feito (`~/bin/tunel.sh`; teste pelo túnel devolveu o IP do celular e o adaptador resolveu o carrossel) |
+| Conferir os números do relatório do adaptador contra o Instagram | 03 | feito (Mateus confirmou que batem) |
 | Trecho de vídeo em português de 30 a 60 s e a transcrição correta feita à mão | 04 | pendente |
 | Limite aceito de erro de transcrição | 04 | pendente |
 | Chave de API de produção definida por ele | 09 | pendente |
+
+## URLs de teste do Instagram (etapa 03)
+Recebidas do Mateus em 2026-11-03; guardadas sem `utm_source`, `rpxt` e `srtk` (parâmetros de rastreio de compartilhamento, que não identificam o post).
+| formato | URL |
+|---|---|
+| foto (feed) | https://www.instagram.com/p/DfSJbEzDXf5/ |
+| vídeo (reel; falha no servidor do Instagram, serve de caso de erro) | https://www.instagram.com/reel/DfSLSZpjl_4/ |
+| reels extras que funcionam | `DczJptKyQtf`, `De2QnoYB5Xe`, `Db8eACCzSvD`, `De0R33YN7r2` |
+| carrossel | https://www.instagram.com/p/Cyn3G8FLV1v/ |

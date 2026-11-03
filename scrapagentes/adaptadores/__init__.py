@@ -1,5 +1,6 @@
 """Registro de adaptadores de rede."""
 from scrapagentes.adaptadores.base import Adaptador
+from scrapagentes.adaptadores.instagram import AdaptadorInstagram
 from scrapagentes.adaptadores.manual import AdaptadorManual
 
 _REGISTRO: dict[str, Adaptador] = {}
@@ -26,3 +27,4 @@ def nomes() -> list[str]:
 
 
 registrar(AdaptadorManual())
+registrar(AdaptadorInstagram())  # a fonte real (Instaloader) só é criada na primeira consulta
