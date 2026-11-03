@@ -14,6 +14,13 @@ def midias(tmp_path_factory):
     return gerar_fixtures(tmp_path_factory.mktemp("fixtures"))
 
 
+@pytest.fixture(autouse=True)
+def sem_modelo_de_fala(monkeypatch):
+    """Os testes offline não carregam o modelo de transcrição; os reais ficam em tests_reais."""
+    from scrapagentes import servico
+    monkeypatch.setattr(servico, "transcrever_video", lambda arquivo, ffmpeg=None: [])
+
+
 @pytest.fixture
 def config(tmp_path):
     return Config(dados=tmp_path / "dados", chave_api=CHAVE)

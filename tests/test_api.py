@@ -201,7 +201,7 @@ def test_video_guarda_duracao_e_pacote_tem_texto(envio, cliente, midias):
     p = cliente.get(f"/itens/{item_id}/pacote").json()
     assert p["contexto"]["formato"] == "video"
     assert abs(p["contexto"]["duracao_s"] - midias["duracao_video_s"]) < 0.5
-    assert p["texto"] == [] and p["imagens"] == []  # transcrição e frames chegam nas etapas 04 e 05
+    assert p["texto"] == [] and len(p["imagens"]) >= 1  # sem fala na fixture; frames da etapa 05
 
 
 def test_pacote_de_video_com_texto_e_frames_ficticios(envio, cliente, config):
@@ -214,6 +214,7 @@ def test_pacote_de_video_com_texto_e_frames_ficticios(envio, cliente, config):
         {"inicio_s": 4.0, "fim_s": 6.0, "texto": "fechamento"},
     ]
     banco.execute("UPDATE item SET texto = ? WHERE id = ?", (json.dumps(trechos), item_id))
+    banco.execute("DELETE FROM imagem WHERE item_id = ?", (item_id,))
     banco.executemany(
         "INSERT INTO imagem (item_id, ordem, arquivo, segundo, marcador) VALUES (?, ?, ?, ?, ?)",
         [(item_id, 1, "midia/x/1.png", 1.0, "comeco"), (item_id, 2, "midia/x/2.png", 3.0, "meio"),

@@ -1,7 +1,7 @@
 """Regras do núcleo, agnósticas de rede: ingestão, coleta, busca e pacote.
 
 Nesta etapa a ingestão é síncrona (o worker entra na etapa 07). Cada chamada cria um job e o
-deixa em `concluido` ou `erro`.
+deixa em `concluido` ou `erro`. Vídeo passa por transcrição e seleção de frames antes de gravar.
 """
 import json
 import logging
@@ -11,10 +11,13 @@ import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from scrapagentes import adaptadores
+import tempfile
+
+from scrapagentes import adaptadores, transcricao
 from scrapagentes.adaptadores.base import METRICAS_PADRAO, Adaptador, ErroAdaptador
 from scrapagentes.banco import agora_iso, reindexar_busca
 from scrapagentes.config import Config
+from scrapagentes.frames import selecionar_frames
 from scrapagentes.tags import normalizar_tag, normalizar_tags
 
 log = logging.getLogger("scrapagentes")
@@ -123,7 +126,22 @@ def _escolher_adaptador(rede: str | None, url: str) -> Adaptador:
     return adaptador
 
 
-def _gravar_midia(conn, config: Config, item_id: int, formato: str, arquivos: list[Path]) -> Path:
+transcrever_video = transcricao.transcrever  # ponto de troca para os testes sem modelo
+
+
+def _processar_video(config: Config, arquivo: Path, duracao_s: float, pasta: Path) -> dict:
+    """Transcrição e frames. Trabalho pesado: roda antes de abrir a transação de escrita."""
+    try:
+        trechos = transcrever_video(arquivo, ffmpeg=config.ffmpeg)
+    except transcricao.ErroTranscricao as exc:  # ex.: vídeo sem faixa de áudio
+        log.warning("vídeo sem transcrição: %s", exc)
+        trechos = []
+    frames = selecionar_frames(arquivo, pasta, duracao_s, ffmpeg=config.ffmpeg)
+    return {"trechos": trechos, "frames": frames}
+
+
+def _gravar_midia(conn, config: Config, item_id: int, formato: str, arquivos: list[Path],
+                  processado: dict | None = None) -> Path:
     """Grava em `midia/<id>.novo` e devolve essa pasta; o chamador a renomeia após o commit."""
     pasta_rel = Path("midia") / str(item_id)
     pasta = config.dados / "midia" / f"{item_id}.novo"
@@ -131,8 +149,18 @@ def _gravar_midia(conn, config: Config, item_id: int, formato: str, arquivos: li
     pasta.mkdir(parents=True)
     conn.execute("DELETE FROM imagem WHERE item_id = ?", (item_id,))
     if formato == "video":
-        # Frames só na etapa 05; guarda o original para os próximos estágios.
         shutil.copyfile(arquivos[0], pasta / f"original{arquivos[0].suffix.lower()}")
+        conn.execute(
+            "UPDATE item SET texto = ? WHERE id = ?",
+            (json.dumps(processado["trechos"], ensure_ascii=False), item_id),
+        )
+        for f in processado["frames"]:
+            destino = pasta / f"{f['ordem']:03d}.jpg"
+            shutil.copyfile(f["arquivo"], destino)
+            conn.execute(
+                "INSERT INTO imagem (item_id, ordem, arquivo, segundo, marcador) VALUES (?, ?, ?, ?, ?)",
+                (item_id, f["ordem"], (pasta_rel / destino.name).as_posix(), f["segundo"], f["marcador"]),
+            )
         return pasta
     for ordem, origem in enumerate(arquivos, start=1):
         destino = pasta / f"{ordem:03d}{origem.suffix.lower()}"
@@ -192,9 +220,15 @@ def ingerir(
     })
     midia_nova = None
     resolvido = None
+    pasta_proc = None
     try:
         resolvido = adaptador.resolver(url_canonica, entrada)
         metricas = _validar_metricas(adaptador, resolvido.metricas)
+        processado = None
+        if resolvido.formato == "video" and (existente is None or reprocessar):
+            config.dados.mkdir(parents=True, exist_ok=True)
+            pasta_proc = Path(tempfile.mkdtemp(prefix="processamento-", dir=config.dados))
+            processado = _processar_video(config, resolvido.arquivos[0], resolvido.duracao_s, pasta_proc)
         agora = agora_iso()
         conn.execute("BEGIN IMMEDIATE")  # trava de escrita antes de ler o MAX(coletado_em)
         with conn:
@@ -206,7 +240,7 @@ def ingerir(
                      resolvido.data_publicacao, resolvido.legenda, resolvido.duracao_s, agora, agora),
                 )
                 item_id = cur.lastrowid
-                midia_nova = _gravar_midia(conn, config, item_id, resolvido.formato, resolvido.arquivos)
+                midia_nova = _gravar_midia(conn, config, item_id, resolvido.formato, resolvido.arquivos, processado)
             else:
                 item_id = existente["id"]
                 conn.execute(
@@ -215,7 +249,7 @@ def ingerir(
                     (resolvido.legenda or None, nicho_norm, agora, item_id),
                 )
                 if reprocessar:
-                    midia_nova = _gravar_midia(conn, config, item_id, resolvido.formato, resolvido.arquivos)
+                    midia_nova = _gravar_midia(conn, config, item_id, resolvido.formato, resolvido.arquivos, processado)
             if tags is not None:
                 _trocar_subnichos(conn, item_id, tags)
             if metricas:
@@ -237,6 +271,8 @@ def ingerir(
     finally:
         if resolvido is not None and resolvido.pasta_temporaria is not None:
             shutil.rmtree(resolvido.pasta_temporaria, ignore_errors=True)
+        if pasta_proc is not None:
+            shutil.rmtree(pasta_proc, ignore_errors=True)
     if midia_nova is not None:
         shutil.rmtree(midia_nova, ignore_errors=True)
     return {"job_id": job_id, "item_id": existente["id"] if existente else None}
