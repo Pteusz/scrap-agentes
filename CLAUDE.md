@@ -27,7 +27,26 @@ Cada etapa tem uma seção "Pronto quando" com checagens que você mesmo roda. S
 Se uma tentativa falhar 3 vezes pelo mesmo motivo, pare e relate o que tentou e o que viu. Não continue em ciclo.
 
 ## Comandos
-Serão registrados aqui ao fim da etapa 02 (rodar API, rodar worker, rodar testes, rodar testes reais).
+Rodar a partir da raiz do projeto (na VPS: `~/scrapagentes`, venv em `.venv`).
+
+```bash
+# instalar dependências (produção: requirements.txt; testes: requirements-dev.txt)
+.venv/bin/pip install -r requirements-dev.txt
+
+# testes (um comando só; gera as fixtures com ffmpeg do imageio-ffmpeg)
+.venv/bin/python -m pytest
+
+# API em desenvolvimento (porta 8200; a 8100 é do serviço mínimo da etapa 01, não mexer)
+SCRAPAGENTES_DADOS=/tmp/sa-dev SCRAPAGENTES_CHAVE_API=<chave de desenvolvimento> SCRAPAGENTES_DOCS=1 \
+  .venv/bin/uvicorn --factory scrapagentes.api:criar_app_do_ambiente --host 127.0.0.1 --port 8200
+
+# gerar as fixtures de mídia à mão
+.venv/bin/python -m scrapagentes.fixtures /tmp/fixtures
+```
+
+Variáveis de ambiente: `SCRAPAGENTES_DADOS` (pasta do banco e da mídia, padrão `dados`), `SCRAPAGENTES_CHAVE_API` (sem ela toda rota exceto `/saude` responde 401), `SCRAPAGENTES_DOCS=1` (liga `/docs`; fica desligado por padrão), `SCRAPAGENTES_FFMPEG` (caminho do ffmpeg, opcional).
+
+Ainda não existem: worker (etapa 07) e testes reais contra redes (etapa 03 em diante).
 
 ## Mapa
 - `docs/SPEC.md` — modelo de dados, contrato do adaptador, API, regras. É o contrato do projeto.

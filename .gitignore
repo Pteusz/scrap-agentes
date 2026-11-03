@@ -5,3 +5,6 @@ __pycache__/
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm
+.pytest_cache/
+dados/
+fixtures/
