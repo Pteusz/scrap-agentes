@@ -8,7 +8,7 @@ Atualize ao fim de cada etapa, colando a saída dos comandos como evidência.
 | 02 | Base e contrato do adaptador | concluída (2026-11-03) | ver "Evidências da etapa 02" |
 | 03 | Adaptador Instagram | concluída (2026-11-03) | ver "Evidências da etapa 03" |
 | 04 | Transcrição | concluída (2026-11-03) | ver "Evidências da etapa 04" |
-| 05 | Frames e marcadores | em andamento | código e testes prontos; falta aprovação da folha de contato |
+| 05 | Frames e marcadores | concluída | folhas de contato aprovadas pelo Mateus |
 | 06 | Pacote e busca | pendente | |
 | 07 | Fila e worker | pendente | |
 | 08 | Métrica sob demanda | pendente | |
@@ -163,7 +163,7 @@ Decisões e observações:
 - Modelos baixados ficam no cache do usuário `pteuz` (`~/.cache/huggingface`), fora do repositório.
 - Aprovado pelo Mateus: modelo `small`, limite de WER de 10% (medido 6,4% na fixture). Sem revisão por subagente nesta etapa (não solicitada).
 
-## Evidências da etapa 05 (em andamento)
+## Evidências da etapa 05
 Módulo `scrapagentes/frames.py` (decisão sobre bibliotecas em `docs/decisoes.md`). Comando: `python -m scrapagentes.frames <video> [--saida pasta] [--folha folha.jpg]`. Pillow só é usado na folha de contato.
 
 Testes (VPS):
@@ -181,7 +181,7 @@ Primeira medição com um vídeo real (`fala_pt.mp4`, 67,9 s, pessoa falando com
 ```
 Reels do Mateus (`Dd4DyYzgCvf`, 125,6 s: 16 frames, 16,7 s, 0,13x; `DcrYj5FDSUC`, 8,6 s: 10 frames, 4,5 s, 0,52x). Ajuste aprovado por ele após a primeira folha: o preenchimento uniforme e a cobertura por terço preferem frames diferentes dos já escolhidos (repetidos só se não houver outro). No vídeo curto o final parado caiu de 4 para 2 frames; sobraram 2 por exigência do mínimo por terço, e a fusão entre cenas aparece em 4 frames. Suíte: 82 passed.
 
-Pendente: aprovação da folha de contato (`tmp_folhas/`) pelo Mateus; originalmente seriam 2 vídeos de tipos diferentes escolhidos pelo Mateus e a aprovação dele; só então a etapa fecha. Sem revisão por subagente (não solicitada).
+Aprovado pelo Mateus: folhas de contato dos 2 reels (a do `fala_pt.mp4` também foi mostrada). Sem revisão por subagente (não solicitada).
 
 ## Insumos que dependem do Mateus
 | insumo | etapa | estado |
@@ -196,7 +196,7 @@ Pendente: aprovação da folha de contato (`tmp_folhas/`) pelo Mateus; originalm
 | Conferir os números do relatório do adaptador contra o Instagram | 03 | feito (Mateus confirmou que batem) |
 | Trecho de vídeo em português de 30 a 60 s e a transcrição correta feita à mão | 04 | recebido (reel `DfQdA_OS8m2`, 67,9 s; ligeiramente acima de 60 s) |
 | Limite aceito de erro de transcrição (WER) e aprovação do modelo | 04 | feito: modelo `small`, WER até 10% (medido: 6,4%) |
-| 2 vídeos reais de tipos diferentes (ex.: pessoa falando para a câmera e cortes rápidos) e aprovação da folha de contato | 05 | pendente (folha do `fala_pt.mp4` já gerada para ele ver) |
+| 2 vídeos reais de tipos diferentes (ex.: pessoa falando para a câmera e cortes rápidos) e aprovação da folha de contato | 05 | feito: reels `Dd4DyYzgCvf` e `DcrYj5FDSUC`; folhas aprovadas |
 | Chave de API de produção definida por ele | 09 | pendente |
 
 ## URLs de teste do Instagram (etapa 03)
