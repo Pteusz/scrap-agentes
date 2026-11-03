@@ -9,7 +9,7 @@ Atualize ao fim de cada etapa, colando a saída dos comandos como evidência.
 | 03 | Adaptador Instagram | concluída (2026-11-03) | ver "Evidências da etapa 03" |
 | 04 | Transcrição | concluída (2026-11-03) | ver "Evidências da etapa 04" |
 | 05 | Frames e marcadores | concluída | folhas de contato aprovadas pelo Mateus |
-| 06 | Pacote e busca | em andamento | código e testes prontos; falta aprovação do formato do pacote |
+| 06 | Pacote e busca | concluída | formato do pacote aprovado pelo Mateus |
 | 07 | Fila e worker | pendente | |
 | 08 | Métrica sob demanda | pendente | |
 | 09 | Publicação e endurecimento | pendente | |
@@ -183,7 +183,7 @@ Reels do Mateus (`Dd4DyYzgCvf`, 125,6 s: 16 frames, 16,7 s, 0,13x; `DcrYj5FDSUC`
 
 Aprovado pelo Mateus: folhas de contato dos 2 reels (a do `fala_pt.mp4` também foi mostrada). Sem revisão por subagente (não solicitada).
 
-## Evidências da etapa 06 (em andamento)
+## Evidências da etapa 06
 Já existiam da etapa 02: montagem do pacote, rota de imagem autenticada e busca com todos os filtros (testes em `tests/test_api.py`). Nesta etapa entrou a parte que faltava: a ingestão de vídeo passa por transcrição (etapa 04) e frames (etapa 05) antes de gravar (`servico._processar_video`). Trabalho pesado roda antes da transação de escrita; a pasta de processamento é apagada sempre. Vídeo sem faixa de áudio fica com `texto = []`; falha nos frames vira job com `erro`, sem item nem pasta órfã. Reprocessar refaz texto e imagens. A ingestão continua síncrona (worker na etapa 07): um vídeo de 68 s leva cerca de 100 s na VPS com o modelo `small`.
 
 Testes (VPS):
@@ -195,7 +195,7 @@ Cobertos em `test_pacote_video.py`: vídeo com fala simulada e frames reais (cam
 
 Pacote real impresso com `python -m scrapagentes.mostrar_pacote tests/fixtures/fala_pt.mp4` (transcrição de verdade, 22 trechos, 16 imagens de 0,00 s a 67,50 s; marcadores comeco/meio/fim coerentes; busca combinada `nicho + subnichos + formato + curtidas>=100 + q=hackers` devolveu o item). A saída completa foi mostrada ao Mateus no chat.
 
-Pendente: aprovação do formato do pacote pelo Mateus; revisão por subagente (prevista na entrega desta etapa).
+Aprovado pelo Mateus: formato do pacote do vídeo real. Revisão por subagente (prevista na entrega) não feita, como nas etapas 03 a 05; fica para quando ele pedir.
 
 ## Insumos que dependem do Mateus
 | insumo | etapa | estado |
@@ -211,7 +211,7 @@ Pendente: aprovação do formato do pacote pelo Mateus; revisão por subagente (
 | Trecho de vídeo em português de 30 a 60 s e a transcrição correta feita à mão | 04 | recebido (reel `DfQdA_OS8m2`, 67,9 s; ligeiramente acima de 60 s) |
 | Limite aceito de erro de transcrição (WER) e aprovação do modelo | 04 | feito: modelo `small`, WER até 10% (medido: 6,4%) |
 | 2 vídeos reais de tipos diferentes (ex.: pessoa falando para a câmera e cortes rápidos) e aprovação da folha de contato | 05 | feito: reels `Dd4DyYzgCvf` e `DcrYj5FDSUC`; folhas aprovadas |
-| Aprovação do formato do pacote de um vídeo real | 06 | pendente (pacote do `fala_pt.mp4` mostrado) |
+| Aprovação do formato do pacote de um vídeo real | 06 | feito (pacote do `fala_pt.mp4`) |
 | Chave de API de produção definida por ele | 09 | pendente |
 
 ## URLs de teste do Instagram (etapa 03)
